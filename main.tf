@@ -23,6 +23,13 @@ terraform {
       version = "~> 3.0.1"
     }
   }
+
+  # ##  Used for end-to-end testing on project; update to suit your needs
+  # backend "s3" {
+  #   bucket = "terraform-ssp-github-actions-state"
+  #   region = "us-west-2"
+  #   key    = "e2e/agones-game-controller/terraform.tfstate"
+  # }
 }
 
 ## THIS TO AUTHENTICATE TO ECR, DON'T CHANGE IT
@@ -74,6 +81,9 @@ locals {
   region          = var.region
   node_group_name = "managed-ondemand"
 
+  gameserver_minport = 7000
+  gameserver_maxport = 8000
+
   node_iam_role_name = module.eks_blueprints_addons.karpenter.node_iam_role_name
 
   vpc_cidr = "10.0.0.0/16"
@@ -110,12 +120,13 @@ module "eks" {
     }
   }
 
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
+  vpc_id                   = module.vpc.vpc_id
+  control_plane_subnet_ids = module.vpc.private_subnets
+  subnet_ids               = module.vpc.public_subnets
 
-  create_cloudwatch_log_group   = false
-  create_cluster_security_group = false
-  create_node_security_group    = false
+  #  create_cloudwatch_log_group   = false
+  # create_cluster_security_group = false
+  # create_node_security_group = false
 
   manage_aws_auth_configmap = true
   aws_auth_roles = [
@@ -130,13 +141,13 @@ module "eks" {
   ]
 
   eks_managed_node_groups = {
-    controller_node = {
+    karpenter_system = {
       node_group_name = "managed-ondemand"
-      instance_types  = ["m5a.large"]
+      instance_types  = ["m5.large"]
 
       create_security_group = false
 
-      subnet_ids   = module.vpc.private_subnets
+      # subnet_ids   = module.vpc.private_subnets
       max_size     = 1
       desired_size = 1
       min_size     = 1
@@ -145,19 +156,71 @@ module "eks" {
       create_launch_template = true              # false will use the default launch template
       launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
 
-      taints = [
-        {
-          key    = "agones.dev/agones-system"
-          value  = "true"
+      labels = {
+        intent             = "control-apps"
+        "karpenter-system" = true
+      }
+      taint = {
+        dedicated = {
+          key    = "karpenter-system"
+          value  = true
           effect = "NO_EXECUTE"
         }
-      ]
-
-      labels = {
-        intent                      = "control-apps"
-        "agones.dev/agones-system"  = "true"
-        "agones.dev/agones-metrics" = "true"
       }
+    }
+
+    agones_system = {
+      instance_types = ["m5.large"]
+      labels = {
+        "agones.dev/agones-system" = true
+      }
+      taint = {
+        dedicated = {
+          key    = "agones.dev/agones-system"
+          value  = true
+          effect = "NO_EXECUTE"
+        }
+      }
+      min_size     = 1
+      max_size     = 1
+      desired_size = 1
+    }
+
+    agones_metrics = {
+      instance_types = ["m5.large"]
+      labels = {
+        "agones.dev/agones-metrics" = true
+      }
+      taints = {
+        dedicated = {
+          key    = "agones.dev/agones-metrics"
+          value  = true
+          effect = "NO_EXECUTE"
+        }
+      }
+      min_size     = 1
+      max_size     = 1
+      desired_size = 1
+    }
+  }
+
+  node_security_group_additional_rules = {
+    ingress_gameserver_udp = {
+      description      = "Agones Game Server Ports"
+      protocol         = "udp"
+      from_port        = local.gameserver_minport
+      to_port          = local.gameserver_maxport
+      type             = "ingress"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+    },
+    ingress_gameserver_webhook = {
+      description                   = "Cluster API to node 8081/tcp agones webhook"
+      protocol                      = "tcp"
+      from_port                     = 8081
+      to_port                       = 8081
+      type                          = "ingress"
+      source_cluster_security_group = true
     }
   }
 
@@ -187,7 +250,30 @@ module "eks_blueprints_addons" {
     }
   }
 
-  enable_karpenter = true
+  # Add-ons
+  enable_metrics_server     = true
+  enable_cluster_autoscaler = true
+
+  helm_releases = {
+    agones = {
+      description      = "A Helm chart for Agones game server"
+      namespace        = "agones-system"
+      create_namespace = true
+      chart            = "agones"
+      chart_version    = "1.32.0"
+      repository       = "https://agones.dev/chart/stable"
+      values = [
+        templatefile("${path.module}/helm_values/agones-values.yaml", {
+          expose_udp         = true
+          gameserver_minport = local.gameserver_minport
+          gameserver_maxport = local.gameserver_maxport
+        })
+      ]
+    }
+  }
+
+  enable_aws_load_balancer_controller = true
+  enable_karpenter                    = true
   karpenter = {
     repository_username = data.aws_ecrpublic_authorization_token.token.user_name
     repository_password = data.aws_ecrpublic_authorization_token.token.password
@@ -231,8 +317,13 @@ module "vpc" {
   cidr = local.vpc_cidr
 
   azs             = local.azs
-  public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
-  private_subnets = ["10.0.32.0/19", "10.0.64.0/19", "10.0.96.0/19"]
+  private_subnets = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k)]
+  public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 48)]
+  # public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
+  # private_subnets = ["10.0.32.0/19", "10.0.64.0/19", "10.0.96.0/19"]
+
+  # NOTE: Agones requires a Node group in Public Subnets and enable Public IP
+  map_public_ip_on_launch = true
 
   enable_nat_gateway   = true
   single_nat_gateway   = true
@@ -258,41 +349,6 @@ module "vpc" {
   }
 
   tags = local.tags
-}
-
-// Install latest version of agones
-variable "agones_version" {
-  default = ""
-}
-
-variable "log_level" {
-  default = "info"
-}
-
-variable "feature_gates" {
-  default = ""
-}
-
-module "helm_agones" {
-  // ***************************************************************************************************
-  // Update ?ref= to the agones release you are installing. For example, ?ref=release-1.17.0 corresponds
-  // to Agones version 1.17.0
-  // ***************************************************************************************************
-  source = "git::https://github.com/googleforgames/agones.git//install/terraform/modules/helm3/?ref=main"
-
-  udp_expose             = "false"
-  agones_version         = var.agones_version
-  values_file            = ""
-  feature_gates          = var.feature_gates
-  host                   = module.eks.cluster_endpoint
-  token                  = data.aws_eks_cluster_auth.this.token
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  log_level              = var.log_level
-}
-
-output "host" {
-  description = "Cluster host address of the EKS cluster"
-  value       = module.eks.cluster_endpoint
 }
 
 output "configure_kubectl" {
