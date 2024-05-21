@@ -136,7 +136,7 @@ module "eks" {
   control_plane_subnet_ids = module.vpc.private_subnets
   subnet_ids               = module.vpc.public_subnets
 
-  #  create_cloudwatch_log_group   = false
+  create_cloudwatch_log_group   = false
   # create_cluster_security_group = false
   # create_node_security_group = false
 
