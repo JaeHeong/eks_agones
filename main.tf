@@ -1,0 +1,316 @@
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 3.72"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.10"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.4.1"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14"
+    }
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0.1"
+    }
+  }
+}
+
+## THIS TO AUTHENTICATE TO ECR, DON'T CHANGE IT
+provider "aws" {
+  region = "us-east-1"
+  alias  = "virginia"
+}
+
+provider "kubernetes" {
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  token                  = data.aws_eks_cluster_auth.this.token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    token                  = data.aws_eks_cluster_auth.this.token
+  }
+}
+
+provider "kubectl" {
+  apply_retry_count      = 10
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  load_config_file       = false
+  token                  = data.aws_eks_cluster_auth.this.token
+}
+
+variable "region" {
+  description = "Region to deploy the resources"
+  type        = string
+}
+
+data "aws_eks_cluster_auth" "this" {
+  name = module.eks.cluster_name
+}
+
+data "aws_ecrpublic_authorization_token" "token" {
+  provider = aws.virginia
+}
+
+data "aws_availability_zones" "available" {}
+
+locals {
+  name            = "spot-and-karpenter"
+  cluster_version = "1.29"
+  region          = var.region
+  node_group_name = "managed-ondemand"
+
+  node_iam_role_name = module.eks_blueprints_addons.karpenter.node_iam_role_name
+
+  vpc_cidr = "10.0.0.0/16"
+  # NOTE: You might need to change this less number of AZs depending on the region you're deploying to
+  azs = slice(data.aws_availability_zones.available.names, 0, 3)
+
+  tags = {
+    blueprint = local.name
+  }
+}
+
+################################################################################
+# Cluster
+################################################################################
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "19.19.1"
+
+  cluster_name                   = local.name
+  cluster_version                = local.cluster_version
+  cluster_endpoint_public_access = true
+
+  cluster_addons = {
+
+    vpc-cni = {
+      most_recent    = true
+      before_compute = true
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
+    }
+  }
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  create_cloudwatch_log_group   = false
+  create_cluster_security_group = false
+  create_node_security_group    = false
+
+  manage_aws_auth_configmap = true
+  aws_auth_roles = [
+    {
+      rolearn  = module.eks_blueprints_addons.karpenter.node_iam_role_arn
+      username = "system:node:{{EC2PrivateDNSName}}"
+      groups = [
+        "system:bootstrappers",
+        "system:nodes",
+      ]
+    }
+  ]
+
+  eks_managed_node_groups = {
+    controller_node = {
+      node_group_name = "managed-ondemand"
+      instance_types  = ["m5a.large"]
+
+      create_security_group = false
+
+      subnet_ids   = module.vpc.private_subnets
+      max_size     = 1
+      desired_size = 1
+      min_size     = 1
+
+      # Launch template configuration
+      create_launch_template = true              # false will use the default launch template
+      launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
+
+      taints = [
+        {
+          key    = "agones.dev/agones-system"
+          value  = "true"
+          effect = "NO_EXECUTE"
+        }
+      ]
+
+      labels = {
+        intent                      = "control-apps"
+        "agones.dev/agones-system"  = "true"
+        "agones.dev/agones-metrics" = "true"
+      }
+    }
+  }
+
+  tags = merge(local.tags, {
+    "karpenter.sh/discovery" = local.name
+  })
+}
+
+module "eks_blueprints_addons" {
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "1.13.0"
+
+  cluster_name      = module.eks.cluster_name
+  cluster_endpoint  = module.eks.cluster_endpoint
+  cluster_version   = module.eks.cluster_version
+  oidc_provider_arn = module.eks.oidc_provider_arn
+
+  eks_addons = {
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+  }
+
+  enable_karpenter = true
+  karpenter = {
+    repository_username = data.aws_ecrpublic_authorization_token.token.user_name
+    repository_password = data.aws_ecrpublic_authorization_token.token.password
+  }
+  karpenter_enable_spot_termination          = true
+  karpenter_enable_instance_profile_creation = true
+  karpenter_node = {
+    iam_role_use_name_prefix = false
+  }
+
+  tags = local.tags
+}
+
+module "ebs_csi_driver_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "5.20"
+
+  role_name_prefix = "${module.eks.cluster_name}-ebs-csi-driver-"
+
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+
+  tags = local.tags
+}
+
+#---------------------------------------------------------------
+# Supporting Resources
+#---------------------------------------------------------------
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.0.0"
+
+  name = local.name
+  cidr = local.vpc_cidr
+
+  azs             = local.azs
+  public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
+  private_subnets = ["10.0.32.0/19", "10.0.64.0/19", "10.0.96.0/19"]
+
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_dns_hostnames = true
+
+  # Manage so we can name
+  manage_default_network_acl    = true
+  default_network_acl_tags      = { Name = "${local.name}-default" }
+  manage_default_route_table    = true
+  default_route_table_tags      = { Name = "${local.name}-default" }
+  manage_default_security_group = true
+  default_security_group_tags   = { Name = "${local.name}-default" }
+
+  public_subnet_tags = {
+    "kubernetes.io/cluster/${local.name}" = "shared"
+    "kubernetes.io/role/elb"              = 1
+  }
+
+  private_subnet_tags = {
+    "kubernetes.io/cluster/${local.name}" = "shared"
+    "kubernetes.io/role/internal-elb"     = 1
+    "karpenter.sh/discovery"              = local.name
+  }
+
+  tags = local.tags
+}
+
+// Install latest version of agones
+variable "agones_version" {
+  default = ""
+}
+
+variable "log_level" {
+  default = "info"
+}
+
+variable "feature_gates" {
+  default = ""
+}
+
+module "helm_agones" {
+  // ***************************************************************************************************
+  // Update ?ref= to the agones release you are installing. For example, ?ref=release-1.17.0 corresponds
+  // to Agones version 1.17.0
+  // ***************************************************************************************************
+  source = "git::https://github.com/googleforgames/agones.git//install/terraform/modules/helm3/?ref=main"
+
+  udp_expose             = "false"
+  agones_version         = var.agones_version
+  values_file            = ""
+  feature_gates          = var.feature_gates
+  host                   = module.eks.cluster_endpoint
+  token                  = data.aws_eks_cluster_auth.this.token
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  log_level              = var.log_level
+}
+
+output "host" {
+  description = "Cluster host address of the EKS cluster"
+  value       = module.eks.cluster_endpoint
+}
+
+output "configure_kubectl" {
+  description = "Configure kubectl: make sure you're logged in with the correct AWS profile and run the following command to update your kubeconfig"
+  value       = "aws eks --region ${local.region} update-kubeconfig --name ${module.eks.cluster_name}"
+}
+
+output "cluster_name" {
+  description = "Cluster name of the EKS cluster"
+  value       = module.eks.cluster_name
+}
+
+output "node_instance_profile_name" {
+  description = "IAM Role name that each Karpenter node will use"
+  value       = module.eks_blueprints_addons.karpenter.node_instance_profile_name
+}
+
+output "vpc_id" {
+  description = "VPC ID that the EKS cluster is using"
+  value       = module.vpc.vpc_id
+}
