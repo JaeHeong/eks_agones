@@ -48,6 +48,8 @@ spec:
                 operator: DoesNotExist
               - key: karpenter.sh/nodepool
                 operator: DoesNotExist
+              - key: karpenter-system
+                operator: Exists
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
@@ -166,6 +168,18 @@ spec:
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
+      - effect: NoExecute
+        key: karpenter-system
+        operator: Equal
+        value: "true"
+      - effect: NoExecute
+          key: agones.dev/agones-system
+          operator: Equal
+          value: "true"
+      - effect: NoExecute
+          key: agones.dev/agones-metrics
+          operator: Equal
+          value: "true"
       topologySpreadConstraints:
       - labelSelector:
           matchLabels:
