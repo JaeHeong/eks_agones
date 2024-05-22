@@ -136,7 +136,7 @@ module "eks" {
   control_plane_subnet_ids = module.vpc.private_subnets
   subnet_ids               = module.vpc.public_subnets
 
-  create_cloudwatch_log_group   = false
+  create_cloudwatch_log_group = false
   # create_cluster_security_group = false
   # create_node_security_group = false
 
@@ -153,37 +153,28 @@ module "eks" {
   ]
 
   eks_managed_node_groups = {
-    karpenter_system = {
-      node_group_name = "managed-ondemand"
-      instance_types  = ["m5.large"]
-
+    default_system = {
+      instance_types        = ["m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
       create_security_group = false
 
       subnet_ids   = module.vpc.private_subnets
-      max_size     = 1
-      desired_size = 1
-      min_size     = 1
+      max_size     = 2
+      desired_size = 2
+      min_size     = 2
 
       # Launch template configuration
       create_launch_template = true              # false will use the default launch template
       launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
 
       labels = {
-        intent             = "control-apps"
-        "karpenter-system" = true
-      }
-      taint = {
-        dedicated = {
-          key    = "karpenter-system"
-          value  = true
-          effect = "NO_EXECUTE"
-        }
+        intent = "control-apps"
       }
     }
 
     agones_system = {
-      instance_types = ["m5.large"]
+      instance_types = ["m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
       labels = {
+        intent                     = "control-apps"
         "agones.dev/agones-system" = true
       }
       taint = {
@@ -196,11 +187,13 @@ module "eks" {
       min_size     = 1
       max_size     = 1
       desired_size = 1
+      subnet_ids   = module.vpc.private_subnets
     }
 
     agones_metrics = {
-      instance_types = ["m5.large"]
+      instance_types = ["m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
       labels = {
+        intent                      = "control-apps"
         "agones.dev/agones-metrics" = true
       }
       taints = {
@@ -213,25 +206,7 @@ module "eks" {
       min_size     = 1
       max_size     = 1
       desired_size = 1
-    }
-
-  default = {
-      instance_types  = ["m5.large"]
-
-      create_security_group = false
-
       subnet_ids   = module.vpc.private_subnets
-      max_size     = 1
-      desired_size = 1
-      min_size     = 1
-
-      # Launch template configuration
-      create_launch_template = true              # false will use the default launch template
-      launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
-
-      labels = {
-        intent             = "control-apps"
-      }
     }
   }
 
@@ -282,6 +257,7 @@ module "eks_blueprints_addons" {
   }
 
   # Add-ons
+
   helm_releases = {
     agones = {
       description      = "A Helm chart for Agones game server"
