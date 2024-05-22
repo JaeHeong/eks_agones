@@ -1,0 +1,201 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "5"
+    meta.helm.sh/release-name: karpenter
+    meta.helm.sh/release-namespace: karpenter
+  creationTimestamp: "2024-05-22T03:22:51Z"
+  generation: 6
+  labels:
+    app.kubernetes.io/instance: karpenter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: karpenter
+    app.kubernetes.io/version: 0.32.1
+    helm.sh/chart: karpenter-v0.32.1
+  name: karpenter
+  namespace: karpenter
+  resourceVersion: "7602"
+  uid: b6cba7c4-30ad-40de-a963-870e113ca728
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: karpenter
+      app.kubernetes.io/name: karpenter
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/settings: 8ceec0fab780c160881e84d7dcaed3609a4eeab0cdf809f000ddf37c213bcf91
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/instance: karpenter
+        app.kubernetes.io/name: karpenter
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: karpenter.sh/provisioner-name
+                operator: DoesNotExist
+              - key: karpenter.sh/nodepool
+                operator: DoesNotExist
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/instance: karpenter
+                app.kubernetes.io/name: karpenter
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - env:
+        - name: KUBERNETES_MIN_VERSION
+          value: 1.19.0-0
+        - name: KARPENTER_SERVICE
+          value: karpenter
+        - name: WEBHOOK_PORT
+          value: "8443"
+        - name: WEBHOOK_METRICS_PORT
+          value: "8001"
+        - name: LOG_LEVEL
+          value: debug
+        - name: METRICS_PORT
+          value: "8000"
+        - name: HEALTH_PROBE_PORT
+          value: "8081"
+        - name: SYSTEM_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: MEMORY_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: controller
+              divisor: "0"
+              resource: limits.memory
+        - name: FEATURE_GATES
+          value: Drift=false
+        - name: BATCH_MAX_DURATION
+          value: 10s
+        - name: BATCH_IDLE_DURATION
+          value: 1s
+        - name: ASSUME_ROLE_DURATION
+          value: 15m
+        - name: CLUSTER_NAME
+          value: spot-and-karpenter
+        - name: CLUSTER_ENDPOINT
+          value: https://337103E1E0B5F6354ED86AB9ED9DE72C.gr7.us-east-1.eks.amazonaws.com
+        - name: VM_MEMORY_OVERHEAD_PERCENT
+          value: "0.075"
+        - name: INTERRUPTION_QUEUE
+          value: karpenter-spot-and-karpenter
+        - name: RESERVED_ENIS
+          value: "0"
+        image: public.ecr.aws/karpenter/controller:v0.32.1@sha256:9b31039d45613ac22a104b8d48eca9dcdeff93e525bd473c811dfd3502e58c69
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 30
+        name: controller
+        ports:
+        - containerPort: 8000
+          name: http-metrics
+          protocol: TCP
+        - containerPort: 8001
+          name: webhook-metrics
+          protocol: TCP
+        - containerPort: 8443
+          name: https-webhook
+          protocol: TCP
+        - containerPort: 8081
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 30
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 65536
+          runAsNonRoot: true
+          runAsUser: 65536
+          seccompProfile:
+            type: RuntimeDefault
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/karpenter/logging
+          name: config-logging
+      dnsPolicy: Default
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: karpenter
+      serviceAccountName: karpenter
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      topologySpreadConstraints:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: karpenter
+            app.kubernetes.io/name: karpenter
+        maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: config-logging
+        name: config-logging
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2024-05-22T03:38:58Z"
+    lastUpdateTime: "2024-05-22T03:38:58Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2024-05-22T03:38:58Z"
+    lastUpdateTime: "2024-05-22T03:47:33Z"
+    message: ReplicaSet "karpenter-7758cb947b" is progressing.
+    reason: ReplicaSetUpdated
+    status: "True"
+    type: Progressing
+  observedGeneration: 6
+  readyReplicas: 1
+  replicas: 2
+  unavailableReplicas: 1
+  updatedReplicas: 2
