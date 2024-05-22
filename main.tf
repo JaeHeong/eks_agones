@@ -214,6 +214,25 @@ module "eks" {
       max_size     = 1
       desired_size = 1
     }
+
+  default = {
+      instance_types  = ["m5.large"]
+
+      create_security_group = false
+
+      subnet_ids   = module.vpc.private_subnets
+      max_size     = 1
+      desired_size = 1
+      min_size     = 1
+
+      # Launch template configuration
+      create_launch_template = true              # false will use the default launch template
+      launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
+
+      labels = {
+        intent             = "control-apps"
+      }
+    }
   }
 
   node_security_group_additional_rules = {
