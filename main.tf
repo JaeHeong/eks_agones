@@ -263,8 +263,6 @@ module "eks_blueprints_addons" {
   }
 
   # Add-ons
-  enable_metrics_server     = true
-
   helm_releases = {
     agones = {
       description      = "A Helm chart for Agones game server"
