@@ -264,7 +264,6 @@ module "eks_blueprints_addons" {
 
   # Add-ons
   enable_metrics_server     = true
-  enable_cluster_autoscaler = true
 
   helm_releases = {
     agones = {
