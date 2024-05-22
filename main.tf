@@ -159,7 +159,7 @@ module "eks" {
 
       create_security_group = false
 
-      # subnet_ids   = module.vpc.private_subnets
+      subnet_ids   = module.vpc.private_subnets
       max_size     = 1
       desired_size = 1
       min_size     = 1
