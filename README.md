@@ -18,6 +18,7 @@
 - export CLUSTER_NAME=$(terraform output -raw cluster_name)
 - export KARPENTER_NODE_IAM_ROLE_NAME=$(terraform output -raw node_instance_profile_name)
 
+```
 cat <<EOF | kubectl apply -f -
 apiVersion: karpenter.sh/v1beta1
 kind: NodePool
@@ -80,7 +81,7 @@ spec:
     intent: apps
     karpenter.sh/discovery: ${CLUSTER_NAME}
 EOF
-
+```
 
   spec:
     nodeSelector:
