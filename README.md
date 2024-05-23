@@ -19,6 +19,7 @@
 - export KARPENTER_NODE_IAM_ROLE_NAME=$(terraform output -raw node_instance_profile_name)
 
 ```
+// Create NodePool
 cat <<EOF | kubectl apply -f -
 apiVersion: karpenter.sh/v1beta1
 kind: NodePool
