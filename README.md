@@ -1,6 +1,7 @@
 # eks_agones
 
 ## Terraform apply
+- export TF_VAR_region=$AWS_REGION
 - terraform init
 - terraform apply -target="module.vpc" -auto-approve
 - terraform apply -target="module.eks" -auto-approve
