@@ -83,6 +83,7 @@ spec:
 EOF
 ```
 ```
+# Need below nodeSelector when deploy pod
   spec:
     nodeSelector:
       intent: apps
