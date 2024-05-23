@@ -14,6 +14,12 @@
 - kubectl apply -f kube-ops-viewer/
 - kubectl get svc kube-ops-view | tail -n 1 | awk '{ print "Kube-ops-view URL = http://"$4 }'
 
+## Create pod using Karpenter 
+  spec:
+    nodeSelector:
+      intent: apps
+      karpenter.sh/capacity-type: spot
+
 ## Terraform destroy
 - terraform destroy -target="module.eks_blueprints_addons" --auto-approve
 - terraform destroy -target="module.eks" --auto-approve
