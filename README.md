@@ -82,11 +82,12 @@ spec:
     karpenter.sh/discovery: ${CLUSTER_NAME}
 EOF
 ```
-
+```
   spec:
     nodeSelector:
       intent: apps
       karpenter.sh/capacity-type: spot
+```
 
 ## Show Logging Karpenter
 - alias kl='kubectl -n karpenter logs -l app.kubernetes.io/name=karpenter --all-containers=true -f --tail=20';
