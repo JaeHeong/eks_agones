@@ -2,6 +2,8 @@
 
 ## Terraform apply
 - export TF_VAR_region=$AWS_REGION
+- export TF_VAR_accountID=''
+- export TF_VAR_user_name=''
 - terraform init
 - terraform apply -target="module.vpc" -auto-approve
 - terraform apply -target="module.eks" -auto-approve
