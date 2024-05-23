@@ -83,11 +83,11 @@ spec:
 EOF
 ```
 ```
-# Need below nodeSelector when deploy pod
-  spec:
-    nodeSelector:
-      intent: apps
-      karpenter.sh/capacity-type: spot
+// Need below nodeSelector when deploy pod
+spec:
+  nodeSelector:
+    intent: apps
+    karpenter.sh/capacity-type: spot
 ```
 
 ## Show Logging Karpenter
