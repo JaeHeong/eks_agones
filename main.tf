@@ -77,6 +77,16 @@ variable "region" {
   type        = string
 }
 
+variable "accountID" {
+  description = "accountID to deploy the resources"
+  type        = string
+}
+
+variable "user_name" {
+  description = "user_name to deploy the resources"
+  type        = string
+}
+
 data "aws_eks_cluster_auth" "this" {
   name = module.eks.cluster_name
 }
@@ -91,6 +101,8 @@ locals {
   name            = "spot-and-karpenter"
   cluster_version = "1.29"
   region          = var.region
+  accountID       = var.accountID
+  user_name       = var.user_name
   node_group_name = "managed-ondemand"
 
   gameserver_minport = 7000
@@ -289,6 +301,21 @@ module "eks_blueprints_addons" {
   }
 
   tags = local.tags
+}
+
+module "admin_team" {
+  source = "aws-ia/eks-blueprints-teams/aws"
+
+  name = "admin-team"
+
+  # Enables elevated, admin privileges for this team
+  enable_admin = true
+  users        = ["arn:aws:iam::${local.accountID}:user/${local.user_name}"]
+  cluster_arn  = "arn:aws:eks:${local.region}:${local.accountID}:cluster/${module.eks.cluster_name}"
+
+  tags = {
+    Environment = "dev"
+  }
 }
 
 module "ebs_csi_driver_irsa" {
