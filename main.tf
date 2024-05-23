@@ -153,7 +153,7 @@ module "eks" {
   ]
 
   eks_managed_node_groups = {
-    default = {
+    default_system = {
       instance_types        = ["m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
       create_security_group = false
 
