@@ -81,10 +81,15 @@ spec:
     karpenter.sh/discovery: ${CLUSTER_NAME}
 EOF
 
+
   spec:
     nodeSelector:
       intent: apps
       karpenter.sh/capacity-type: spot
+
+## Show Logging Karpenter
+- alias kl='kubectl -n karpenter logs -l app.kubernetes.io/name=karpenter --all-containers=true -f --tail=20';
+- kl
 
 ## Terraform destroy
 - terraform destroy -target="module.eks_blueprints_addons" --auto-approve
