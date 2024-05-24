@@ -24,6 +24,7 @@
 ## Kube-Ops-View
 - kubectl apply -f kube-ops-viewer/
 - kubectl patch service kube-ops-view -p '{"spec":{"type":"LoadBalancer"}}'
+- Wait a minute for deploy LoadBalancer
 - kubectl get svc kube-ops-view | tail -n 1 | awk '{ print "Kube-ops-view URL = http://"$4 }'
 
 ## Create pod using Karpenter 
