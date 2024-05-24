@@ -15,9 +15,7 @@
 
 ## Edit agones-controller for test
 - ephemeral-storage 10100Mi -> 5000Mi
-- kubectl patch deployment agones-controller --namespace agones-system --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/ephemeral-storage", "value": "5000Mi"},
-        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/ephemeral-storage", "value": "5000Mi"}]'
+- kubectl patch deployment agones-controller --namespace agones-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/ephemeral-storage", "value": "5000Mi"}, {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/ephemeral-storage", "value": "5000Mi"}]'
 
 ## Kube-Ops-View
 - kubectl apply -f kube-ops-viewer/
