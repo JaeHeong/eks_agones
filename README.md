@@ -113,5 +113,8 @@ spec:
 - terraform destroy -target="module.eks" --auto-approve
 - terraform destroy --auto-approve
 
+## eks-node-viewer
+- eks-node-viewer
+
 # Reference
 - https://community.aws/content/2dhlDEUfwElQ9mhtOP6D8YJbULA/run-kubernetes-clusters-for-less-with-amazon-ec2-spot-and-karpenter#step-6-optional-simulate-spot-interruption
