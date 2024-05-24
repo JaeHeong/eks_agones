@@ -16,8 +16,9 @@
 - complete -o default -F __start_kubectl k
 
 ## Edit agones-controller for test
-- kubectl -n agones-system patch deploy agones-controller -p '{"spec":{"template":{"spec":{"containers":["resources":{"limits":{"ephemeral-storage":5000Mi}}]}}}}'
-- kubectl -n agones-system patch deploy agones-controller -p '{"spec":{"template":{"spec":{"containers":["resources":{"requests":{"ephemeral-storage":5000Mi}}]}}}}'
+- kubectl patch deployment agones-controller --namespace agones-system --type='json' \
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/ephemeral-storage", "value": "5000Mi"},
+        {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/ephemeral-storage", "value": "5000Mi"}]'
 
 ## Kube-Ops-View
 - kubectl apply -f kube-ops-viewer/
